@@ -63,6 +63,10 @@ fn create_area_bomb(mut commands: Commands) {
         .push_children(&[exploder_fill]);
 }
 
+// TODO (Next Time!): Every 2 seconds, spawn an exploder of N (50 - 150) radius at X/Y position
+// TODO (Next next time!): Render a health bar over Player's head
+// TODO (Next next time!): When health is 0, game ends
+// TODO (Next steps): More complicated exploders (effects, different patterns)
 fn update_exploders(
     mut commands: Commands,
     time: Res<Time>,
