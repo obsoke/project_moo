@@ -5,12 +5,11 @@ use bevy_prototype_lyon::prelude::*;
 struct Exploder {
     radius: f32,
     timer: Timer,
+    parent_id: Entity,
 }
 
-// TODO: NEXT STEPS: (1) Interpolate AoE circle growing effect to coincide with timer going off
-// CURRENT ISSUE: Draw two circles: One is the "outline", one is the timer/"red"
 fn create_area_bomb(mut commands: Commands) {
-    let parent_circle = commands
+    let exploder_outline = commands
         .spawn()
         .insert_bundle(GeometryBuilder::build_as(
             &shapes::Circle::default(),
@@ -34,11 +33,12 @@ fn create_area_bomb(mut commands: Commands) {
         ))
         .id();
 
-    let child_circle = commands
+    let exploder_fill = commands
         .spawn()
         .insert(Exploder {
             radius: 150.,
             timer: Timer::from_seconds(5.0, false),
+            parent_id: exploder_outline,
         })
         .insert_bundle(GeometryBuilder::build_as(
             &shapes::Circle::default(),
@@ -59,27 +59,50 @@ fn create_area_bomb(mut commands: Commands) {
         .id();
 
     commands
-        .entity(parent_circle)
-        .push_children(&[child_circle]);
+        .entity(exploder_outline)
+        .push_children(&[exploder_fill]);
 }
 
-fn update_exploders(time: Res<Time>, mut query: Query<(&mut Exploder, &mut Transform)>) {
-    for (mut exploder, mut transform) in query.iter_mut() {
+fn update_exploders(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut query: Query<(&mut Exploder, &mut Transform, &GlobalTransform)>,
+    mut player_query: Query<(&GlobalTransform, &mut Health), (With<Player>, Without<Exploder>)>,
+) {
+    let (player_transform, mut health) = player_query.single_mut();
+
+    for (mut exploder, mut transform, global_transform) in query.iter_mut() {
+        let exploder = &mut *exploder;
         let timer = &mut exploder.timer;
+        let parent = exploder.parent_id;
+        let player_translation = player_transform.translation;
+        let translation = global_transform.translation;
+        // println!(
+        //     "Coords: Player Left X {:?}, Exploder Left  {:?}",
+        //     player_translation.x, translation.x,
+        // );
         if timer.tick(time.delta()).finished() {
-            println!("WE DONE!");
-            // TODO: If any Players are in here, it should damage them
+            // Destroy the Exploder entity via parent
+            commands.entity(parent).despawn_recursive();
+
+            // Check for intersection of player & exploder
+            // TODO: Cleanup
+            if player_translation.x > (translation.x - 150.)
+                && player_translation.x < (translation.x + 150.)
+                && player_translation.y < (translation.y + 150.)
+                && player_translation.y > (translation.y - 150.)
+            {
+                health.0 -= 100.;
+            }
         }
 
         // Percent is a value between 0 and 1
         // We should be able to use this to scale our "red" image from low to high
         let percent = timer.percent();
         transform.scale = Vec3::splat(percent);
-        // println!(
-        //     "Percent elapsed: {}, current Scale: {:?}",
-        //     percent, transform.scale,
-        // );
     }
+
+    println!("Player health is {}", health.0);
 }
 
 #[derive(Component)]
@@ -87,6 +110,9 @@ struct Player;
 
 #[derive(Component)]
 struct Speed(f32);
+
+#[derive(Component)]
+struct Health(f32);
 
 #[derive(Component, Default, Debug)]
 struct Direction(Vec3);
@@ -99,10 +125,11 @@ fn create_player(mut commands: Commands, server: Res<AssetServer>) {
         .spawn()
         .insert(Player)
         .insert(Speed(300.))
+        .insert(Health(100.))
         .insert(Direction::default())
         .insert_bundle(SpriteBundle {
             texture: server.load("player.png"),
-            transform: Transform::from_xyz(50., 0., 0.),
+            transform: Transform::from_xyz(50., 0., 55.),
             ..Default::default()
         });
 }
