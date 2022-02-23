@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 use bevy_prototype_lyon::prelude::*;
+use rand::prelude::*;
 
 #[derive(Component, Debug)]
 struct Exploder {
@@ -8,26 +9,28 @@ struct Exploder {
     parent_id: Entity,
 }
 
-fn create_area_bomb(mut commands: Commands) {
+fn create_area_bomb(mut commands: Commands, window: Res<Windows>) {
+    let primary_window = window.get_primary().unwrap();
+    let edge_w = primary_window.width() / 2.;
+    let edge_h = primary_window.height() / 2.;
+
+    let mut rng = thread_rng();
+    let x_pos = rng.gen_range(-edge_w..=edge_w);
+    let y_pos = rng.gen_range(-edge_h..=edge_h);
+    let radius = rng.gen_range(50.0..=150.);
+    let timer: f32 = rng.gen_range(2..=5) as f32;
+
     let exploder_outline = commands
         .spawn()
         .insert_bundle(GeometryBuilder::build_as(
             &shapes::Circle::default(),
             DrawMode::Outlined {
-                fill_mode: FillMode {
-                    color: Color::Rgba {
-                        red: 0.,
-                        green: 0.,
-                        blue: 0.,
-                        alpha: 0.,
-                    },
-                    options: FillOptions::default(),
-                },
+                fill_mode: FillMode::color(Color::NONE),
                 outline_mode: StrokeMode::new(Color::BLACK, 0.01),
             },
             Transform {
-                translation: Vec3::new(150., 150., 0.),
-                scale: Vec3::splat(150.),
+                translation: Vec3::new(x_pos, y_pos, 0.),
+                scale: Vec3::splat(radius),
                 ..Default::default()
             },
         ))
@@ -36,25 +39,20 @@ fn create_area_bomb(mut commands: Commands) {
     let exploder_fill = commands
         .spawn()
         .insert(Exploder {
-            radius: 150.,
-            timer: Timer::from_seconds(5.0, false),
+            radius,
+            timer: Timer::from_seconds(timer, false),
             parent_id: exploder_outline,
         })
         .insert_bundle(GeometryBuilder::build_as(
             &shapes::Circle::default(),
             DrawMode::Outlined {
-                fill_mode: FillMode {
-                    color: Color::Rgba {
-                        red: 0.7,
-                        green: 0.,
-                        blue: 0.,
-                        alpha: 1.,
-                    },
-                    options: FillOptions::default(),
-                },
+                fill_mode: FillMode::color(Color::CRIMSON),
                 outline_mode: StrokeMode::new(Color::CRIMSON, 0.01),
             },
-            Transform::default(),
+            Transform {
+                scale: Vec3::splat(0.01), // So small, it can't be seen at first - hacky?
+                ..Default::default()
+            },
         ))
         .id();
 
@@ -63,7 +61,6 @@ fn create_area_bomb(mut commands: Commands) {
         .push_children(&[exploder_fill]);
 }
 
-// TODO (Next Time!): Every 2 seconds, spawn an exploder of N (50 - 150) radius at X/Y position
 // TODO (Next next time!): Render a health bar over Player's head
 // TODO (Next next time!): When health is 0, game ends
 // TODO (Next steps): More complicated exploders (effects, different patterns)
@@ -76,25 +73,22 @@ fn update_exploders(
     let (player_transform, mut health) = player_query.single_mut();
 
     for (mut exploder, mut transform, global_transform) in query.iter_mut() {
-        let exploder = &mut *exploder;
+        let exploder = &mut *exploder; // Mut borrow technique to get borrow checker to stop complaining
+
         let timer = &mut exploder.timer;
-        let parent = exploder.parent_id;
-        let player_translation = player_transform.translation;
-        let translation = global_transform.translation;
-        // println!(
-        //     "Coords: Player Left X {:?}, Exploder Left  {:?}",
-        //     player_translation.x, translation.x,
-        // );
         if timer.tick(time.delta()).finished() {
             // Destroy the Exploder entity via parent
-            commands.entity(parent).despawn_recursive();
+            commands.entity(exploder.parent_id).despawn_recursive();
 
             // Check for intersection of player & exploder
-            // TODO: Cleanup
-            if player_translation.x > (translation.x - 150.)
-                && player_translation.x < (translation.x + 150.)
-                && player_translation.y < (translation.y + 150.)
-                && player_translation.y > (translation.y - 150.)
+            let radius = exploder.radius;
+            let player_translation = player_transform.translation;
+            let translation = global_transform.translation;
+
+            if player_translation.x > (translation.x - radius)
+                && player_translation.x < (translation.x + radius)
+                && player_translation.y < (translation.y + radius)
+                && player_translation.y > (translation.y - radius)
             {
                 health.0 -= 100.;
             }
@@ -169,8 +163,11 @@ fn main() {
         .add_plugins(DefaultPlugins)
         .add_plugin(ShapePlugin)
         .add_startup_system(create_player)
-        // .add_system(create_area_bomb)
-        .add_startup_system(create_area_bomb)
+        .add_system_set(
+            SystemSet::new()
+                .with_run_criteria(bevy::core::FixedTimestep::step(2.0))
+                .with_system(create_area_bomb),
+        )
         .add_system(update_exploders)
         .add_system(move_player)
         .add_system(bevy::input::system::exit_on_esc_system)
