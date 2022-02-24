@@ -63,8 +63,8 @@ fn create_area_bomb(mut commands: Commands, window: Res<Windows>) {
         .push_children(&[exploder_fill]);
 }
 
-// TODO (Next next time!): Render a health bar over Player's head
 // TODO (Next next time!): When health is 0, game ends
+// TODO (Next next time!): Have the exploders spawn within a sub rectangle of the entire screen (full screen - 50px on each side)
 // TODO (Next steps): More complicated exploders (effects, different patterns)
 fn update_exploders(
     mut commands: Commands,
