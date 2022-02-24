@@ -5,6 +5,7 @@ use rand::prelude::*;
 #[derive(Component, Debug)]
 struct Exploder {
     radius: f32,
+    damage: f32,
     timer: Timer,
     parent_id: Entity,
 }
@@ -40,6 +41,7 @@ fn create_area_bomb(mut commands: Commands, window: Res<Windows>) {
         .spawn()
         .insert(Exploder {
             radius,
+            damage: 20.,
             timer: Timer::from_seconds(timer, false),
             parent_id: exploder_outline,
         })
@@ -90,7 +92,7 @@ fn update_exploders(
                 && player_translation.y < (translation.y + radius)
                 && player_translation.y > (translation.y - radius)
             {
-                health.0 -= 100.;
+                health.current -= exploder.damage;
             }
         }
 
@@ -99,8 +101,6 @@ fn update_exploders(
         let percent = timer.percent();
         transform.scale = Vec3::splat(percent);
     }
-
-    println!("Player health is {}", health.0);
 }
 
 #[derive(Component)]
@@ -110,26 +110,64 @@ struct Player;
 struct Speed(f32);
 
 #[derive(Component)]
-struct Health(f32);
+struct HealthBar;
+
+#[derive(Component, Debug)]
+struct Health {
+    current: f32,
+    total: f32,
+    draw_bar: bool,
+}
+
+impl Health {
+    pub fn new(max: f32, draw_bar: bool) -> Self {
+        Self {
+            current: max,
+            total: max,
+            draw_bar,
+        }
+    }
+}
 
 #[derive(Component, Default, Debug)]
 struct Direction(Vec3);
 
-fn create_player(mut commands: Commands, server: Res<AssetServer>) {
+fn setup(mut commands: Commands, server: Res<AssetServer>) {
     // Create default 2d camera
     commands.spawn_bundle(OrthographicCameraBundle::new_2d());
     // Create player entity
-    commands
+    let player = commands
         .spawn()
         .insert(Player)
         .insert(Speed(300.))
-        .insert(Health(100.))
+        .insert(Health::new(100., true))
         .insert(Direction::default())
         .insert_bundle(SpriteBundle {
-            texture: server.load("player.png"),
+            sprite: Sprite {
+                color: Color::PURPLE,
+                custom_size: Some(Vec2::new(25., 25.)),
+                ..Default::default()
+            },
             transform: Transform::from_xyz(50., 0., 55.),
             ..Default::default()
-        });
+        })
+        .id();
+
+    let health_bar = commands
+        .spawn()
+        .insert(HealthBar)
+        .insert_bundle(SpriteBundle {
+            sprite: Sprite {
+                color: Color::BLACK,
+                custom_size: Some(Vec2::new(60.0, 10.0)),
+                ..Default::default()
+            },
+            transform: Transform::from_xyz(0., 40., 0.),
+            ..Default::default()
+        })
+        .id();
+
+    commands.entity(player).push_children(&[health_bar]);
 }
 
 fn move_player(
@@ -158,18 +196,32 @@ fn move_player(
     }
 }
 
+fn update_health_bar(
+    health_query: Query<(&Health), (With<Player>)>,
+    mut health_bar_query: Query<(&mut Transform), (With<HealthBar>)>,
+) {
+    // ONLY UPDATES PLAYER HEALTH BAR FOR NOW
+    // TODO: Make this generic over any object with a health bar
+    let (health) = health_query.single();
+    let (mut transform) = health_bar_query.single_mut();
+
+    let current = health.current;
+    transform.scale.x = current / 100.;
+}
+
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
         .add_plugin(ShapePlugin)
-        .add_startup_system(create_player)
+        .add_startup_system(setup)
         .add_system_set(
             SystemSet::new()
-                .with_run_criteria(bevy::core::FixedTimestep::step(2.0))
+                .with_run_criteria(bevy::core::FixedTimestep::step(1.0))
                 .with_system(create_area_bomb),
         )
         .add_system(update_exploders)
         .add_system(move_player)
+        .add_system(update_health_bar)
         .add_system(bevy::input::system::exit_on_esc_system)
         .run();
 }
