@@ -21,14 +21,16 @@ fn create_area_bomb(mut commands: Commands, window: Res<Windows>) {
     let radius = rng.gen_range(50.0..=150.);
     let timer: f32 = rng.gen_range(2..=5) as f32;
 
+    let circle_shape = shapes::RegularPolygon {
+        sides: 360,
+        ..shapes::RegularPolygon::default()
+    };
+
     let exploder_outline = commands
         .spawn()
         .insert_bundle(GeometryBuilder::build_as(
-            &shapes::Circle::default(),
-            DrawMode::Outlined {
-                fill_mode: FillMode::color(Color::NONE),
-                outline_mode: StrokeMode::new(Color::BLACK, 0.01),
-            },
+            &circle_shape,
+            DrawMode::Stroke(StrokeMode::new(Color::BLACK, 0.01)),
             Transform {
                 translation: Vec3::new(x_pos, y_pos, 0.),
                 scale: Vec3::splat(radius),
@@ -46,7 +48,7 @@ fn create_area_bomb(mut commands: Commands, window: Res<Windows>) {
             parent_id: exploder_outline,
         })
         .insert_bundle(GeometryBuilder::build_as(
-            &shapes::Circle::default(),
+            &circle_shape,
             DrawMode::Outlined {
                 fill_mode: FillMode::color(Color::CRIMSON),
                 outline_mode: StrokeMode::new(Color::CRIMSON, 0.01),
